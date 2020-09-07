@@ -52,16 +52,11 @@ impl Network {
             layers: layer_blueprints
                 .into_iter()
                 .map(|blueprint| {
-                    for input_weights in &blueprint.seed_weights {
-                        assert!(input_weights.len() > 0);
-                        assert_eq!(input_weights[0].len(), num_inputs);
-                    }
-
                     let layer = Layer::new(
                         num_inputs,
                         blueprint.num_nodes,
-                        blueprint.seed_bias,
                         blueprint.seed_weights,
+                        blueprint.seed_bias,
                         blueprint.activator,
                     );
                     num_inputs = blueprint.num_nodes;
@@ -94,12 +89,6 @@ impl Network {
             network_outputs.push(next_output);
         }
 
-        // back propagation
-        // loop through the layers backwards and propagate the error throughout
-        let mut layers_backwards: Vec<&mut Layer> = self.layers.iter_mut().collect();
-        layers_backwards.reverse();
-        // Necessary to get around borrow rules
-        let num_layers = layers_backwards.len();
         // keep track of the error the current layer being adjusted is experiencing.
         let mut layer_error: Vec<f64> = network_outputs
             .last()
@@ -111,6 +100,13 @@ impl Network {
 
         // net error for BEFORE the training (to return)
         let net_error = layer_error.iter().map(|x| 0.5 * x.powi(2)).sum();
+
+        // back propagation
+        // loop through the layers backwards and propagate the error throughout
+        let mut layers_backwards: Vec<&mut Layer> = self.layers.iter_mut().collect();
+        layers_backwards.reverse();
+        // Necessary to get around borrow rules
+        let num_layers = layers_backwards.len();
 
         for (layer_i, layer) in layers_backwards.iter_mut().enumerate() {
             let layer_i = num_layers - layer_i;
