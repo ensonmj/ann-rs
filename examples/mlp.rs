@@ -40,10 +40,9 @@ fn main() {
     let mut learning_rate = 0.01;
     for i in 0..10000 {
         let mut errors = vec![];
-        for input in &inputs {
-            for output in &outputs {
-                errors.push(nn.train(input, &[*output], learning_rate));
-            }
+        for (i, input) in inputs.iter().enumerate() {
+            let output = &outputs[i];
+            errors.push(nn.train(input, &[*output], learning_rate));
         }
 
         if i % 100 == 0 {

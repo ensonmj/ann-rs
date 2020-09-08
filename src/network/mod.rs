@@ -69,21 +69,13 @@ impl Network {
     // trains the network, adjust all weights within the network to account for
     // the way that the error after an Example propogates with the weights.
     // return the error value BEFORE this round of training.
-    pub fn train(
-        &mut self,
-        training_inputs: &[f64],
-        training_outputs: &[f64],
-        learning_rate: f64,
-    ) -> f64 {
-        assert_eq!(training_inputs.len(), self.layers[0].weights[0].len());
-        assert_eq!(
-            training_outputs.len(),
-            self.layers.last().unwrap().weights.len()
-        );
+    pub fn train(&mut self, inputs: &[f64], labels: &[f64], lr: f64) -> f64 {
+        assert_eq!(inputs.len(), self.layers[0].weights[0].len());
+        assert_eq!(labels.len(), self.layers.last().unwrap().weights.len());
 
         // feed-forward
         // calculate the outputs of each layer in order and find our final answer
-        let mut network_outputs = vec![Vec::from(training_inputs)];
+        let mut network_outputs = vec![Vec::from(inputs)];
         for layer in &self.layers {
             let next_output = layer.calculate_output(network_outputs.last().unwrap());
             network_outputs.push(next_output);
@@ -94,8 +86,8 @@ impl Network {
             .last()
             .unwrap()
             .iter()
-            .enumerate()
-            .map(|(i, output)| output - training_outputs[i])
+            .zip(labels.iter())
+            .map(|(output, label)| output - label)
             .collect();
 
         // net error for BEFORE the training (to return)
@@ -120,7 +112,7 @@ impl Network {
                         * layer.activator.derived(network_outputs[layer_i][out_i]);
                     next_layer_error[in_i] += input_err * *weight;
 
-                    *weight -= learning_rate * input_err * network_outputs[layer_i - 1][in_i];
+                    *weight -= lr * input_err * network_outputs[layer_i - 1][in_i];
                 }
             }
 
