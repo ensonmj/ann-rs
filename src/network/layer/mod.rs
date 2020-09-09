@@ -5,7 +5,7 @@ use crate::activators::Activator;
 #[derive(Debug)]
 pub struct Layer {
     pub weights: Vec<Vec<f64>>,
-    pub bias: f64, // the shared weight of bias, assume bias always be 1.
+    pub bias: Vec<f64>, // the weight of bias, assume bias always be 1.
     pub activator: Box<dyn Activator>,
 }
 
@@ -27,7 +27,7 @@ impl Layer {
         num_inputs: usize,
         num_nodes: usize,
         seed_weights: Option<Vec<Vec<f64>>>,
-        seed_bias: Option<f64>,
+        seed_bias: Option<Vec<f64>>,
         activator: Box<dyn Activator>,
     ) -> Self {
         let weights = seed_weights.unwrap_or_else(|| xavier_init(num_inputs, num_nodes));
@@ -36,7 +36,9 @@ impl Layer {
             assert_eq!(input_weights.len(), num_inputs);
         }
 
-        let bias = seed_bias.unwrap_or_else(|| thread_rng().gen());
+        let bias =
+            seed_bias.unwrap_or_else(|| (0..num_nodes).map(|_| thread_rng().gen()).collect());
+        assert_eq!(bias.len(), num_nodes);
 
         Layer {
             bias,
@@ -47,17 +49,32 @@ impl Layer {
 
     // calculates the output vector with activations
     pub fn calculate_output(&self, inputs: &[f64]) -> Vec<f64> {
+        // self.weights
+        //     .iter()
+        //     .map(|input_weights| {
+        //         // calc f(w*x+b) for each node
+        //         self.activator.activate(
+        //             input_weights
+        //                 .iter()
+        //                 .zip(inputs.iter())
+        //                 .map(|(w, i)| w * i)
+        //                 .sum::<f64>()
+        //                 + self.bias,
+        //         )
+        //     })
+        //     .collect()
         self.weights
             .iter()
-            .map(|input_weights| {
+            .zip(self.bias.iter())
+            .map(|(input_weights, bias)| {
                 // calc f(w*x+b) for each node
                 self.activator.activate(
                     input_weights
                         .iter()
                         .zip(inputs.iter())
-                        .map(|(w, i)| w * i)
+                        .map(|(w, x)| w * x)
                         .sum::<f64>()
-                        + self.bias,
+                        + bias,
                 )
             })
             .collect()
