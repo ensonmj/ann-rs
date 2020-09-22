@@ -98,8 +98,8 @@ impl Layer {
                     .collect()
             })
             .collect();
-        assert_eq!(self.weights.len(), gradient.len());
-        assert_eq!(self.weights[0].len(), gradient[0].len());
+        debug_assert_eq!(self.weights.len(), gradient.len());
+        debug_assert_eq!(self.weights[0].len(), gradient[0].len());
 
         // bias gradient = curr_delta * prev_output = curr_delta * 1
         let bias_gradient = curr_delta.iter().cloned().collect();

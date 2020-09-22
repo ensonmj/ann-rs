@@ -26,8 +26,8 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
     // the way that the error after an Example propogates with the weights.
     // return the error value BEFORE this round of training.
     pub fn fit(&mut self, inputs: &[f64], expected: &[f64]) -> f64 {
-        assert_eq!(inputs.len(), self.layers[0].weights[0].len());
-        assert_eq!(expected.len(), self.layers.last().unwrap().weights.len());
+        debug_assert_eq!(inputs.len(), self.layers[0].weights[0].len());
+        debug_assert_eq!(expected.len(), self.layers.last().unwrap().weights.len());
         log::debug!("expected: {:?}", &expected);
 
         // feed-forward
@@ -61,7 +61,7 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
     // calc the outputs of each layer in order
     // put the input first in the outputs
     fn forward(&mut self, inputs: &[f64]) -> Vec<Vec<f64>> {
-        assert_eq!(inputs.len(), self.layers[0].weights[0].len());
+        debug_assert_eq!(inputs.len(), self.layers[0].weights[0].len());
 
         // feed-forward
         // calculate the outputs of each layer in order and find our final answer

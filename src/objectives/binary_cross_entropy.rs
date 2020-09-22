@@ -11,12 +11,12 @@ impl BinaryCrossEntropy {
 
 impl Objective<Sigmoid> for BinaryCrossEntropy {
     fn loss(&self, predict: &[f64], expected: &[f64]) -> f64 {
-        assert_eq!(
+        debug_assert_eq!(
             expected.len(),
             1,
             "binary cross entropy should have only one dimension"
         );
-        assert_eq!(
+        debug_assert_eq!(
             predict.len(),
             1,
             "binary cross entropy result should have only one dimension"
