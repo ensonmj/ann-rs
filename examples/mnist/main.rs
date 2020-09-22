@@ -117,14 +117,14 @@ fn main() -> Result<(), Error> {
 
     // for train data and labels shuffle
     let mut idxs: Vec<usize> = (0..size).collect();
-    for i in 0..5 {
+    for i in 0..50 {
         let mut errors = vec![];
         idxs.shuffle(&mut thread_rng());
         for (j, idx) in idxs.iter().enumerate() {
             let input = &image_data[idx * rows * cols..(idx + 1) * rows * cols];
             let label = into_onehot(label_data[*idx]);
             errors.push(nn.fit(&input, &label));
-            if j % 1000 == 0 {
+            if j % 5000 == 0 {
                 let mean_errors = errors.iter().sum::<f64>() / (errors.len() as f64);
                 log::info!("{}-{}: {}", i, j, mean_errors);
             }
