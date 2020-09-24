@@ -11,25 +11,24 @@ impl MeanSquareError {
 
 impl Objective<Sigmoid> for MeanSquareError {
     fn loss(&self, predict: &[f64], expected: &[f64]) -> f64 {
-        let s = Sigmoid.activate(predict);
-        expected
+        Sigmoid
+            .activate(predict)
             .iter()
-            .zip(s.iter())
-            .map(|(expected, predict)| 0.5 * (expected - predict).powf(2.))
+            .zip(expected.iter())
+            .map(|(predict, expected)| 0.5 * (expected - predict).powf(2.))
             .sum()
     }
 
     fn delta_without_deriv(&self, predict: &[f64], expected: &[f64]) -> Vec<f64> {
-        let s = Sigmoid.activate(predict);
-        expected
+        Sigmoid
+            .activate(predict)
             .iter()
-            .zip(s.iter())
-            .map(|(expected, predict)| (predict - expected) * predict * (1. - predict))
+            .zip(expected.iter())
+            .map(|(predict, expected)| (predict - expected) * predict * (1. - predict))
             .collect()
     }
 
-    fn predict_from_probs(&self, probs: &[f64]) -> f64 {
-        let s = Sigmoid.activate(probs);
-        s[0]
+    fn predict_from_logits(&self, logits: &[f64]) -> Vec<f64> {
+        Sigmoid.activate(logits)
     }
 }

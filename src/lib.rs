@@ -6,5 +6,4 @@ pub mod network_builder;
 pub mod objectives;
 pub mod optimizers;
 
-pub use functions::*;
 pub use network_builder::*;

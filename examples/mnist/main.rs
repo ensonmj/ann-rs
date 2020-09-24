@@ -1,7 +1,6 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use log;
 use pretty_env_logger;
-use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 use std::fs::File;
 use std::io::Cursor;
@@ -112,24 +111,16 @@ fn main() -> Result<(), Error> {
         .add_layer(300, Box::new(Relu))
         .output(10)
         .minimize_to(CrossEntropy::new())
-        .optimize_with(SGD::new(0.0001))
+        .optimize_with(SGD::new(0.0001, 1.0))
         .build();
 
-    // for train data and labels shuffle
-    let mut idxs: Vec<usize> = (0..size).collect();
-    for i in 0..50 {
-        let mut errors = vec![];
-        idxs.shuffle(&mut thread_rng());
-        for (j, idx) in idxs.iter().enumerate() {
-            let input = &image_data[idx * rows * cols..(idx + 1) * rows * cols];
-            let label = into_onehot(label_data[*idx]);
-            errors.push(nn.fit(&input, &label));
-            if j % 5000 == 0 {
-                let mean_errors = errors.iter().sum::<f64>() / (errors.len() as f64);
-                log::info!("{}-{}: {}", i, j, mean_errors);
-            }
-        }
-    }
+    let image_data: Vec<Vec<f64>> = image_data.chunks(rows * cols).map(|s| s.to_vec()).collect();
+    assert_eq!(image_data.len(), size);
+    let label_data = label_data
+        .into_iter()
+        .map(|v| into_onehot(v as usize, 10))
+        .collect();
+    nn.fit(image_data, label_data, 5, 100);
 
     // test
     let test_image_file = "./data/t10k-images-idx3-ubyte";
@@ -139,7 +130,7 @@ fn main() -> Result<(), Error> {
 
     let mut confusion_matrix: Vec<Vec<u32>> = vec![vec![0u32; 10]; 10];
     for (i, input) in test_image_data.chunks(rows * cols).enumerate() {
-        let infer = nn.infer(input) as usize;
+        let infer = argmax(&nn.infer(input)) as usize;
         let label = test_label_data[i] as usize;
         confusion_matrix[infer][label] += 1;
     }

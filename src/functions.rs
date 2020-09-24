@@ -1,10 +1,12 @@
 use rand::{thread_rng, Rng};
 use std::cmp::Ordering;
 
-pub fn into_onehot(idx: u8) -> [f64; 10] {
-    let mut arr = [0.; 10];
-    arr[usize::from(idx)] = 1.;
-    arr
+pub fn into_onehot(idx: usize, classes: usize) -> Vec<f64> {
+    debug_assert!(idx < classes, "onehot idx must less than classes");
+    let mut vec = Vec::new();
+    vec.resize(classes, f64::default());
+    vec[idx] = 1.;
+    vec
 }
 
 pub fn argmax(arr: &[f64]) -> usize {

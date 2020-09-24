@@ -21,11 +21,11 @@ impl Objective<Sigmoid> for BinaryCrossEntropy {
             1,
             "binary cross entropy result should have only one dimension"
         );
-        let s = Sigmoid.activate(predict);
-        expected
+        Sigmoid
+            .activate(predict)
             .iter()
-            .zip(s.iter())
-            .map(|(&expected, predict)| {
+            .zip(expected.iter())
+            .map(|(predict, &expected)| {
                 -(if expected < 1e-6 {
                     (1.0 - predict).ln()
                 } else {
@@ -35,20 +35,21 @@ impl Objective<Sigmoid> for BinaryCrossEntropy {
             .sum()
     }
 
+    // https://math.stackexchange.com/questions/2503428/derivative-of-binary-cross-entropy-why-are-my-signs-not-right
     fn delta_without_deriv(&self, predict: &[f64], expected: &[f64]) -> Vec<f64> {
-        let s = Sigmoid.activate(predict);
-        expected
+        Sigmoid
+            .activate(predict)
             .iter()
-            .zip(s.iter())
-            .map(|(expected, predict)| expected * (predict - 1.))
+            .zip(expected.iter())
+            .map(|(predict, expected)| predict - expected)
             .collect()
     }
 
-    fn predict_from_probs(&self, probs: &[f64]) -> f64 {
-        if probs[0] >= 0.5 {
-            1.
-        } else {
-            0.
-        }
+    fn predict_from_logits(&self, logits: &[f64]) -> Vec<f64> {
+        Sigmoid
+            .activate(logits)
+            .iter()
+            .map(|&v| if v > 0.5 { 1. } else { 0. })
+            .collect()
     }
 }

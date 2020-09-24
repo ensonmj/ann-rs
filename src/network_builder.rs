@@ -72,6 +72,25 @@ impl NetworkBuilderWithInput {
             layers: self.layers,
         }
     }
+
+    pub fn output_with_weights_and_bias(
+        mut self,
+        num_nodes: usize,
+        seed_weights: Vec<Vec<f64>>,
+        seed_bias: Vec<f64>,
+    ) -> NetworkBuilderWithOutput {
+        let layer = Layer::new(
+            self.input_dim,
+            num_nodes,
+            Box::new(Linear),
+            Some(seed_weights),
+            Some(seed_bias),
+        );
+        self.layers.push(Box::new(layer));
+        NetworkBuilderWithOutput {
+            layers: self.layers,
+        }
+    }
 }
 
 pub struct NetworkBuilderWithOutput {

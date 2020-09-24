@@ -1,6 +1,6 @@
 use super::Objective;
 use crate::activators::{Activator, Softmax};
-use crate::argmax;
+use crate::functions::{argmax, into_onehot};
 
 pub struct CrossEntropy;
 
@@ -13,11 +13,11 @@ impl CrossEntropy {
 impl Objective<Softmax> for CrossEntropy {
     // loss = -SUM(expected(i) * ln(Softmax(predict(i))))
     fn loss(&self, predict: &[f64], expected: &[f64]) -> f64 {
-        let s = Softmax.activate(predict);
-        expected
+        Softmax
+            .activate(predict)
             .iter()
-            .zip(s.iter())
-            .map(|(expected, predict)| -(expected * predict.ln()))
+            .zip(expected.iter())
+            .map(|(predict, expected)| -(expected * predict.ln()))
             .sum()
     }
 
@@ -28,15 +28,15 @@ impl Objective<Softmax> for CrossEntropy {
         // for i: 0-n
         //     if i == j, expected=1: delta = (predict-1) <- (predict-expected)
         //     if i != j, expected=0: delta = predict     <- (predict-expected)
-        let s = Softmax.activate(predict);
-        expected
+        Softmax
+            .activate(predict)
             .iter()
-            .zip(s.iter())
-            .map(|(expected, predict)| predict - expected)
+            .zip(expected.iter())
+            .map(|(predict, expected)| predict - expected)
             .collect()
     }
 
-    fn predict_from_probs(&self, probs: &[f64]) -> f64 {
-        argmax(&probs) as f64
+    fn predict_from_logits(&self, logits: &[f64]) -> Vec<f64> {
+        into_onehot(argmax(&logits), logits.len())
     }
 }
