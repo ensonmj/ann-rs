@@ -4,11 +4,18 @@ use super::Activator;
 pub struct Linear;
 
 impl Activator for Linear {
-    fn activate(&self, x: &[f64]) -> Vec<f64> {
-        x.to_owned()
+    // logits: minibatch of logits from current layer
+    // return: minibatch of outputs from current layer
+    fn activate(&self, logits: &[Vec<f64>]) -> Vec<Vec<f64>> {
+        logits.to_owned()
     }
 
-    fn derived(&self, x: &[f64]) -> Vec<f64> {
-        vec![1.; x.len()]
+    // outputs: minibatch of outputs of current layer
+    // return: minibatch of derivs of current layer
+    fn derived(&self, outputs: &[Vec<f64>]) -> Vec<Vec<f64>> {
+        outputs
+            .iter()
+            .map(|x| x.iter().map(|_| 1.).collect())
+            .collect()
     }
 }

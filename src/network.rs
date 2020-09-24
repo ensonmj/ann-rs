@@ -31,13 +31,18 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
     pub fn fit(
         &mut self,
         inputs: Vec<Vec<f64>>,
-        expected: Vec<Vec<f64>>,
+        expecteds: Vec<Vec<f64>>,
         epochs: usize,
         batch_size: usize,
     ) -> Vec<f64> {
+        debug_assert_eq!(inputs[0].len(), self.layers[0].weights[0].len());
+        debug_assert_eq!(
+            expecteds[0].len(),
+            self.layers.last().unwrap().weights.len()
+        );
         let mut all_batch_mean_loss = vec![];
         let mut train_pairs: Vec<(Vec<f64>, Vec<f64>)> =
-            inputs.into_iter().zip(expected.into_iter()).collect();
+            inputs.into_iter().zip(expecteds.into_iter()).collect();
         for i in 0..epochs {
             // for train data and labels shuffle
             train_pairs.shuffle(&mut thread_rng());
@@ -86,58 +91,117 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
 
     // (batch_hit, batch_miss, batch_loss)
     fn fit_one_batch(&mut self, train_pairs: &[(Vec<f64>, Vec<f64>)]) -> (u64, u64, f64) {
-        train_pairs.iter().fold(
-            (0, 0, 0.),
-            |(batch_hit, batch_miss, batch_loss), (input, expected)| {
-                debug_assert_eq!(input.len(), self.layers[0].weights[0].len());
-                debug_assert_eq!(expected.len(), self.layers.last().unwrap().weights.len());
+        let num_of_minibatch = train_pairs.len() as f64;
 
-                // feed-forward
-                // calculate the outputs of each layer in order
-                let outputs = self.forward(&input);
+        // step1. split inputs and ecpecteds from train_pairs and collect separately
+        let mut inputs = vec![];
+        let mut expecteds = vec![];
+        train_pairs.into_iter().for_each(|(input, expected)| {
+            inputs.push(input.clone());
+            expecteds.push(expected.clone());
+        });
 
-                // back propagation
-                let gradients = self.backward(&outputs, expected);
+        // step2. feed-forward
+        // calculate the outputs of each layer in order
+        let outputs = self.forward(&inputs);
 
-                // optimize
-                let optimizer = &mut self.optimizer;
-                self.layers.iter_mut().zip(gradients.iter()).for_each(
-                    |(ref mut layer, (gradient, bias_gradient))| {
-                        let weights = &mut layer.weights;
-                        let bias = &mut layer.bias;
-                        optimizer.optimize(weights, bias, gradient, bias_gradient);
-                    },
-                );
+        // step3. back propagation
+        let all_layer_minibatch_gradients = self.backward(&outputs, &expecteds);
 
-                let loss = self.objective.loss(&outputs.last().unwrap(), expected);
-                let outputs = self.objective.predict_from_logits(&outputs.last().unwrap());
-                let hit = outputs
+        // step4. optimize
+        // use mean of minibatch's gradients currently
+        // Vec1<(Vec2<Vec3<Vec4<f64>>>, Vec2<Vec3<f64>>)>
+        // =>
+        // Vec1<(Mean<Vec3<Vec4<f64>>>, Mean<Vec3<f64>>)>
+        let mean_gradients: Vec<(Vec<Vec<f64>>, Vec<f64>)> = all_layer_minibatch_gradients
+            .iter()
+            .map(|(batch_gradients, batch_bias_gradients)| {
+                let num_nodes = batch_gradients[0].len();
+                let input_dim = batch_gradients[0][0].len();
+                let mut mean_gradients: Vec<Vec<f64>> = vec![vec![0.; input_dim]; num_nodes];
+                let mut mean_bias_gradients: Vec<f64> = vec![0.; num_nodes];
+                batch_gradients.iter().for_each(|gradients| {
+                    mean_gradients
+                        .iter_mut()
+                        .zip(gradients)
+                        .for_each(|(sum_row, row)| {
+                            sum_row
+                                .iter_mut()
+                                .zip(row.iter())
+                                .for_each(|(sum_col, col)| *sum_col = *sum_col + col)
+                        })
+                });
+                mean_gradients.iter_mut().for_each(|row| {
+                    row.iter_mut()
+                        .for_each(|col| *col = *col / num_of_minibatch)
+                });
+
+                batch_bias_gradients.iter().for_each(|bias_gradients| {
+                    mean_bias_gradients
+                        .iter_mut()
+                        .zip(bias_gradients)
+                        .for_each(|(sum_row, row)| *sum_row = *sum_row + row)
+                });
+                mean_bias_gradients
+                    .iter_mut()
+                    .for_each(|row| *row = *row / num_of_minibatch);
+
+                (mean_gradients, mean_bias_gradients)
+            })
+            .collect();
+
+        let optimizer = &mut self.optimizer;
+        self.layers.iter_mut().zip(mean_gradients.iter()).for_each(
+            |(ref mut layer, (gradient, bias_gradient))| {
+                let weights = &mut layer.weights;
+                let bias = &mut layer.bias;
+                optimizer.optimize(weights, bias, gradient, bias_gradient);
+            },
+        );
+
+        // step5. evaluation
+        // hit_count, miss_count, loss
+        let loss = self
+            .objective
+            .loss(&outputs.last().unwrap(), &expecteds)
+            .iter()
+            .sum();
+        let outputs = self.objective.predict_from_logits(&outputs.last().unwrap());
+        let (hit_count, miss_count) = outputs.iter().zip(expecteds.iter()).fold(
+            (0, 0),
+            |(hit_count, miss_count), (output, expected)| {
+                let hit = output
                     .iter()
-                    .zip(expected.iter())
+                    .zip(expected)
                     .fold(true, |eq, (l, r)| eq && if l == r { true } else { false });
                 if hit {
-                    (batch_hit + 1, batch_miss, batch_loss + loss)
+                    (hit_count + 1, miss_count)
                 } else {
-                    (batch_hit, batch_miss + 1, batch_loss + loss)
+                    (hit_count, miss_count + 1)
                 }
             },
-        )
+        );
+        (hit_count, miss_count, loss)
     }
 
     // infer with pre-trained weights
     pub fn infer(&mut self, input: &[f64]) -> Vec<f64> {
-        let outputs = self.forward(input);
-        self.objective.predict_from_logits(&outputs.last().unwrap())
+        let outputs = self.forward(&[Vec::from(input)]);
+        self.objective
+            .predict_from_logits(&outputs.last().unwrap())
+            .first()
+            .unwrap()
+            .clone()
     }
 
     // calc the outputs of each layer in order
     // put the input first in the outputs
-    fn forward(&mut self, input: &[f64]) -> Vec<Vec<f64>> {
-        debug_assert_eq!(input.len(), self.layers[0].weights[0].len());
-
-        // feed-forward
+    // inputs: minibatch of Vec<f64>
+    // return: all layers' of minibatch outputs include inputs
+    fn forward(&mut self, inputs: &[Vec<f64>]) -> Vec<Vec<Vec<f64>>> {
+        // layers<minibatch<layer nodes>>`
+        let mut network_outputs = vec![Vec::from(inputs)];
         // calculate the outputs of each layer in order and find our final answer
-        let mut network_outputs = vec![Vec::from(input)];
         for layer in &self.layers {
             let next_output = layer.calc_output(network_outputs.last().unwrap());
             network_outputs.push(next_output);
@@ -146,15 +210,18 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
         network_outputs
     }
 
+    // outputs: all layers' of minibatch outputs include inputs
+    // expected: minibatch of labels
+    // return: all layers' of (minibatch gradients, minibatch bias_gradients)
     fn backward(
         &mut self,
-        outputs: &[Vec<f64>],
-        expected: &[f64],
-    ) -> Vec<(Vec<Vec<f64>>, Vec<f64>)> {
-        let mut gradients: Vec<(Vec<Vec<f64>>, Vec<f64>)> = vec![];
-        let mut delta_without_deriv = self
+        outputs: &[Vec<Vec<f64>>],
+        expecteds: &[Vec<f64>],
+    ) -> Vec<(Vec<Vec<Vec<f64>>>, Vec<Vec<f64>>)> {
+        let mut all_layer_gradients: Vec<(Vec<Vec<Vec<f64>>>, Vec<Vec<f64>>)> = vec![];
+        let mut delta_without_derivs = self
             .objective
-            .delta_without_deriv(&outputs.last().unwrap(), expected);
+            .delta_without_deriv(&outputs.last().unwrap(), expecteds);
 
         // loop through the layers backwards and propagate the error throughout
         let mut layers_backwards: Vec<&Layer> = self.layers.iter().map(AsRef::as_ref).collect();
@@ -167,16 +234,16 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
         for (k, layer) in layers_backwards.iter().enumerate() {
             let layer_k = num_layers - k;
 
-            let (delta, gradient, bias_gradient) = layer.delta_without_deriv_and_gradient(
-                &delta_without_deriv,
+            let (deltas, gradients, bias_gradients) = layer.delta_without_deriv_and_gradient(
+                &delta_without_derivs,
                 &outputs[layer_k],
                 &outputs[layer_k - 1],
             );
-            gradients.push((gradient, bias_gradient));
+            all_layer_gradients.push((gradients, bias_gradients));
 
-            delta_without_deriv = delta;
+            delta_without_derivs = deltas;
         }
-        gradients.reverse();
-        gradients
+        all_layer_gradients.reverse();
+        all_layer_gradients
     }
 }

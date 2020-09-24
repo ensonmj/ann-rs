@@ -22,7 +22,7 @@ impl Optimizer for SGD {
         gradients: &[Vec<f64>],
         bias_gradients: &[f64],
     ) {
-        log::debug!("lr: {}", &self.learning_rate);
+        log::debug!("learning rate: {}", &self.learning_rate);
         log::debug!("before weights: {:?}, gradient: {:?}", &weights, &gradients);
         weights
             .iter_mut()

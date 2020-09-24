@@ -3,6 +3,10 @@ mod sgd;
 pub use sgd::SGD;
 
 pub trait Optimizer {
+    // weights: one layer's weights
+    // bias: one layer's bias
+    // gradients: one layer's gradients,
+    // bias_gradients: one layer's bias_gradients,
     fn optimize(
         &mut self,
         weights: &mut [Vec<f64>],

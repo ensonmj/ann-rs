@@ -5,13 +5,24 @@ use crate::functions::sigmoid;
 pub struct Sigmoid;
 
 impl Activator for Sigmoid {
-    fn activate(&self, x: &[f64]) -> Vec<f64> {
-        x.iter().map(|&x| sigmoid(x)).collect()
+    // logits: minibatch of logits from current layer
+    // return: minibatch of outputs from current layer
+    fn activate(&self, logits: &[Vec<f64>]) -> Vec<Vec<f64>> {
+        logits
+            .iter()
+            .map(|x| x.iter().map(|&x| sigmoid(x)).collect())
+            .collect()
     }
 
     // f'(x)=f(x)(1-f(x))
-    fn derived(&self, x: &[f64]) -> Vec<f64> {
-        x.iter().map(|&x| sigmoid(x) * (1. - sigmoid(x))).collect()
+    //
+    // outputs: minibatch of outputs of current layer
+    // return: minibatch of derivs of current layer
+    fn derived(&self, outputs: &[Vec<f64>]) -> Vec<Vec<f64>> {
+        outputs
+            .iter()
+            .map(|x| x.iter().map(|&x| sigmoid(x) * (1. - sigmoid(x))).collect())
+            .collect()
     }
 }
 
@@ -21,8 +32,8 @@ mod tests {
 
     #[test]
     fn test_sigmoid() {
-        let x = [3.5];
+        let x = [vec![3.5]];
         let result = Sigmoid.activate(&x);
-        assert_eq!(result, [0.9706877692486436]);
+        assert_eq!(result, [[0.9706877692486436]]);
     }
 }

@@ -11,7 +11,7 @@ pub struct Layer {
 impl Layer {
     // Used as a public API for construction and validation of layers in a network
     // when `None` is specified, the most common defaults are used
-    // IE xavier initialization for seed weights, uniform random for bias, Liner for activation.
+    // IE He initialization for seed weights, 0 for bias
     pub fn new(
         input_dim: usize,
         num_nodes: usize,
@@ -36,87 +36,130 @@ impl Layer {
         }
     }
 
-    // calculates the output[f(w*x+b)] vector with activations
-    pub fn calc_output(&self, inputs: &[f64]) -> Vec<f64> {
+    // calculates the output[f(w*x+b)] vector with activations of mini batch
+    //
+    // inputs: minibatch<layer nodes>
+    // return: minibatch<layer nodes>
+    pub fn calc_output(&self, inputs: &[Vec<f64>]) -> Vec<Vec<f64>> {
         self.activator.activate(
-            &(self
-                .weights
+            &(inputs
                 .iter()
-                .zip(self.bias.iter())
-                .map(|(input_weights, bias)| {
-                    // calc f(w*x+b) for each node
-                    input_weights
+                .map(|input| {
+                    self.weights
                         .iter()
-                        .zip(inputs.iter())
-                        .map(|(w, x)| w * x)
-                        .sum::<f64>()
-                        + bias
+                        .zip(self.bias.iter())
+                        .map(|(input_weights, bias)| {
+                            // calc f(w*x+b) for each node
+                            input_weights
+                                .iter()
+                                .zip(input.iter())
+                                .map(|(w, x)| w * x)
+                                .sum::<f64>()
+                                + bias
+                        })
+                        .collect()
                 })
-                .collect::<Vec<_>>()),
+                .collect::<Vec<Vec<_>>>()),
         )
     }
 
-    // delta_without_deriv (without multify prev layer activator's deriv) for prev layer
-    // gradient and bias_gradient for curr layer
+    // delta rule
+    // https://blog.yani.io/deltarule/
+    // https://blog.yani.io/backpropagation/
+    //
+    // delta_without_deriv (without multify prev layer activator's deriv) for previous layer
+    // gradient and bias_gradient for current layer
+    //
+    // curr_delta_without_deriv: minibatch of current layer's delta_without_deriv
+    // curr_output: minibatch of current layer's output
+    // prev_output: minibatch of previous layer's output
+    // return: minibatch of previous layer's delta_without_deriv and current layer's gradients
     pub fn delta_without_deriv_and_gradient(
         &self,
-        curr_delta_without_deriv: &[f64],
-        curr_output: &[f64],
-        prev_output: &[f64],
-    ) -> (Vec<f64>, Vec<Vec<f64>>, Vec<f64>) {
-        // delta rule
-        // https://blog.yani.io/deltarule/
-        // https://blog.yani.io/backpropagation/
-        let curr_delta = self.delta(curr_delta_without_deriv, curr_output);
-        let (gradient, bias_gradient) = self.gradient(&curr_delta, prev_output);
-        let prev_delta_without_deriv = self.prev_delta_without_deriv(&curr_delta);
+        curr_delta_without_derivs: &[Vec<f64>],
+        curr_outputs: &[Vec<f64>],
+        prev_outputs: &[Vec<f64>],
+    ) -> (Vec<Vec<f64>>, Vec<Vec<Vec<f64>>>, Vec<Vec<f64>>) {
+        let curr_deltas = self.delta(curr_delta_without_derivs, curr_outputs);
+        let (gradients, bias_gradients) = self.gradient(&curr_deltas, prev_outputs);
+        let prev_delta_without_derivs = self.prev_delta_without_deriv(&curr_deltas);
 
-        (prev_delta_without_deriv, gradient, bias_gradient)
+        (prev_delta_without_derivs, gradients, bias_gradients)
     }
 
-    fn delta(&self, curr_delta_without_deriv: &[f64], curr_output: &[f64]) -> Vec<f64> {
+    // curr_delta_without_deriv: minibatch of current layer delta_without_deriv
+    // curr_output: minibatch of current layer output
+    // return: minibatch of current layer's delta
+    fn delta(
+        &self,
+        curr_delta_without_derivs: &[Vec<f64>],
+        curr_outputs: &[Vec<f64>],
+    ) -> Vec<Vec<f64>> {
         // curr_delta = curr_delta_without_deriv * deriv
-        let driv = self.activator.derived(curr_output);
-        curr_delta_without_deriv
+        let derivs = self.activator.derived(curr_outputs);
+        curr_delta_without_derivs
             .iter()
-            .zip(driv.iter())
-            .map(|(delta, driv)| delta * driv)
+            .zip(derivs.iter())
+            .map(|(delta, deriv)| {
+                delta
+                    .iter()
+                    .zip(deriv)
+                    .map(|(delta, deriv)| delta * deriv)
+                    .collect()
+            })
             .collect()
     }
 
-    fn gradient(&self, curr_delta: &[f64], prev_output: &[f64]) -> (Vec<Vec<f64>>, Vec<f64>) {
+    // curr_delta: minibatch of current layer delta
+    // prev_output: minibatch of previous layer output
+    // return: minibatch of current layer gradients
+    fn gradient(
+        &self,
+        curr_deltas: &[Vec<f64>],
+        prev_outputs: &[Vec<f64>],
+    ) -> (Vec<Vec<Vec<f64>>>, Vec<Vec<f64>>) {
         // gradient = curr_delta * prev_output
-        let gradient: Vec<Vec<f64>> = self
-            .weights
+        let gradients: Vec<Vec<Vec<f64>>> = curr_deltas
             .iter()
-            .zip(curr_delta.iter())
-            .map(|(input_weights, delta)| {
-                input_weights
+            .zip(prev_outputs.iter())
+            .map(|(curr_delta, prev_output)| {
+                self.weights
                     .iter()
-                    .zip(prev_output)
-                    .map(|(_, prev_output)| delta * prev_output)
+                    .zip(curr_delta.iter())
+                    .map(|(input_weights, delta)| {
+                        input_weights
+                            .iter()
+                            .zip(prev_output)
+                            .map(|(_, prev_output)| delta * prev_output)
+                            .collect()
+                    })
                     .collect()
             })
             .collect();
-        debug_assert_eq!(self.weights.len(), gradient.len());
-        debug_assert_eq!(self.weights[0].len(), gradient[0].len());
 
         // bias gradient = curr_delta * prev_output = curr_delta * 1
-        let bias_gradient = curr_delta.iter().cloned().collect();
+        let bias_gradients = curr_deltas.iter().cloned().collect();
 
-        (gradient, bias_gradient)
+        (gradients, bias_gradients)
     }
 
-    fn prev_delta_without_deriv(&self, curr_delta: &[f64]) -> Vec<f64> {
+    // curr_delta: minibatch of current layer delta
+    // return: minibatch of previous layer delta_without_deriv
+    fn prev_delta_without_deriv(&self, curr_deltas: &[Vec<f64>]) -> Vec<Vec<f64>> {
         // prev_delta_without_deriv = SUM(curr_delta[i] * weights[j][i]) over j
         let input_dim = self.weights[0].len();
-        (0..input_dim)
-            .map(|i| {
-                curr_delta
-                    .iter()
-                    .enumerate()
-                    .map(|(j, delta)| delta * self.weights[j][i])
-                    .sum()
+        curr_deltas
+            .iter()
+            .map(|curr_delta| {
+                (0..input_dim)
+                    .map(|i| {
+                        curr_delta
+                            .iter()
+                            .enumerate()
+                            .map(|(j, delta)| delta * self.weights[j][i])
+                            .sum()
+                    })
+                    .collect()
             })
             .collect()
     }

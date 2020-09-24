@@ -6,17 +6,24 @@ use std::cmp::Ordering;
 pub struct Softmax;
 
 impl Activator for Softmax {
-    fn activate(&self, x: &[f64]) -> Vec<f64> {
+    // logits: minibatch of logits from current layer
+    // return: minibatch of outputs from current layer
+    fn activate(&self, logits: &[Vec<f64>]) -> Vec<Vec<f64>> {
         // softmax(x)=softmax(x+c)
         // use max to overcome overflow or underflow
-        let max = x
+        logits
             .iter()
-            .max_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
-            .unwrap();
+            .map(|x| {
+                let max = x
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
+                    .unwrap();
 
-        let exps: Vec<f64> = x.iter().map(|x| (x - max).exp()).collect();
-        let sum_exp: f64 = exps.iter().sum();
-        exps.into_iter().map(|v| v / sum_exp).collect()
+                let exps: Vec<f64> = x.iter().map(|x| (x - max).exp()).collect();
+                let sum_exp: f64 = exps.iter().sum();
+                exps.into_iter().map(|v| v / sum_exp).collect()
+            })
+            .collect()
     }
 
     // http://blog.prince2015.club/2020/03/27/softmax/
@@ -27,7 +34,10 @@ impl Activator for Softmax {
     // for i: 0-n
     //     if i == j: Sj*(1-Sj)
     //     if i != j: -Sj*Si = Sj*(0-Si)
-    fn derived(&self, _x: &[f64]) -> Vec<f64> {
+    //
+    // outputs: minibatch of outputs of current layer
+    // return: minibatch of derivs of current layer
+    fn derived(&self, _outputs: &[Vec<f64>]) -> Vec<Vec<f64>> {
         unimplemented!()
         // let s = x[node_idx];
         // x.iter()
@@ -43,15 +53,15 @@ mod tests {
 
     #[test]
     fn test_softmax() {
-        let x = [1., 2., 3.];
+        let x = [vec![1., 2., 3.]];
         let result = Softmax.activate(&x);
         assert_eq!(
             result,
-            [0.09003057317038046, 0.24472847105479764, 0.6652409557748218]
+            [[0.09003057317038046, 0.24472847105479764, 0.6652409557748218]]
         );
 
-        let x = [1000., 2000., 3000.];
+        let x = [vec![1000., 2000., 3000.]];
         let result = Softmax.activate(&x);
-        assert_eq!(result, [0.0, 0.0, 1.0]);
+        assert_eq!(result, [[0.0, 0.0, 1.0]]);
     }
 }
