@@ -79,10 +79,8 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
             .enumerate()
             .map(|(i, &v)| (i as f32, v as f32))
             .collect();
-        let xmax = all_batch_mean_loss.len() as f32 / 100.;
-        let xmax = if xmax < 20. { 20. } else { xmax };
-        let xmax = if xmax > 50. { 50. } else { xmax };
-        Chart::new(140, 80, 0., xmax)
+        let xmax = all_batch_mean_loss.len() as f32;
+        Chart::new(180, 100, 0., xmax)
             .lineplot(&Shape::Lines(&losses))
             .nice();
 
