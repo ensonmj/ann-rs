@@ -1,4 +1,5 @@
 use super::Optimizer;
+use crate::functions::{for_each, transform};
 
 pub struct Adam {
     pub learning_rate: f64,
@@ -6,10 +7,10 @@ pub struct Adam {
     beta2: f64,
     eps: f64,
     count: u64,
-    gradient_mts: Vec<Vec<Vec<f64>>>,
-    bias_gradient_mts: Vec<Vec<f64>>,
-    gradient_vts: Vec<Vec<Vec<f64>>>,
-    bias_gradient_vts: Vec<Vec<f64>>,
+    means: Vec<Vec<Vec<f64>>>,
+    bias_means: Vec<Vec<f64>>,
+    virances: Vec<Vec<Vec<f64>>>,
+    bias_virances: Vec<Vec<f64>>,
 }
 
 impl Adam {
@@ -20,156 +21,103 @@ impl Adam {
             beta2: 0.999,
             eps: 0.00000001,
             count: 0,
-            gradient_mts: vec![],
-            bias_gradient_mts: vec![],
-            gradient_vts: vec![],
-            bias_gradient_vts: vec![],
+            means: vec![],
+            bias_means: vec![],
+            virances: vec![],
+            bias_virances: vec![],
         }
+    }
+
+    // init mean and virance default 0
+    fn init_layer_mean_and_virance(&mut self, gradients: &[Vec<f64>], bias_gradients: &[f64]) {
+        let mean: Vec<Vec<f64>> = gradients
+            .iter()
+            .map(|row| row.iter().map(|_| 0.).collect())
+            .collect();
+        let bias_mean: Vec<f64> = bias_gradients.iter().map(|_| 0.).collect();
+
+        let virance = mean.clone();
+        let bias_virance = bias_mean.clone();
+
+        self.means.push(mean);
+        self.bias_means.push(bias_mean);
+        self.virances.push(virance);
+        self.bias_virances.push(bias_virance);
     }
 }
 
+// https://towardsdatascience.com/adam-latest-trends-in-deep-learning-optimization-6be9a291375c
+// https://blog.csdn.net/yzy_1996/article/details/84618536
+// https://zh.d2l.ai/chapter_optimization/adam.html
 impl Optimizer for Adam {
     fn optimize(
         &mut self,
         idx: usize,
         weights: &mut [Vec<f64>],
         bias: &mut [f64],
-        gradients: &[Vec<f64>],
-        bias_gradients: &[f64],
+        gradients: &mut [Vec<f64>],
+        bias_gradients: &mut [f64],
     ) {
+        // increased after every all layers updated
         if idx == 0 {
-            // increased after every all layers
             self.count += 1;
         }
 
-        // https://zh.d2l.ai/chapter_optimization/adam.html
-        // https://blog.csdn.net/yzy_1996/article/details/84618536
-        if self.gradient_mts.len() <= idx {
-            // create mt and vt cache
-            let gradient_mt: Vec<Vec<f64>> = gradients
-                .iter()
-                .map(|row| row.iter().map(|_| 0.).collect())
-                .collect();
-            let bias_gradient_mt: Vec<f64> = bias_gradients.iter().map(|_| 0.).collect();
-
-            let gradient_vt = gradient_mt.clone();
-            let bias_gradient_vt = bias_gradient_mt.clone();
-
-            self.gradient_mts.push(gradient_mt);
-            self.bias_gradient_mts.push(bias_gradient_mt);
-            self.gradient_vts.push(gradient_vt);
-            self.bias_gradient_vts.push(bias_gradient_vt);
+        if self.means.len() <= idx {
+            self.init_layer_mean_and_virance(gradients, bias_gradients);
         }
 
         let beta1 = self.beta1;
         let beta2 = self.beta2;
-        let eps = self.eps;
-        let count = self.count as f64;
-        let gradient_mt = &mut self.gradient_mts[idx];
-        let gradient_vt = &mut self.gradient_vts[idx];
-        let bias_gradient_mt = &mut self.bias_gradient_mts[idx];
-        let bias_gradient_vt = &mut self.bias_gradient_vts[idx];
+        let param = self.count as f64;
 
-        // v[:] = beta1 * v + (1 - beta1) * p.grad
-        gradient_mt
-            .iter_mut()
-            .zip(gradients.iter())
-            .for_each(|(mt_row, g_row)| {
-                mt_row
-                    .iter_mut()
-                    .zip(g_row.iter())
-                    .for_each(|(mt_col, g_col)| *mt_col = beta1 * *mt_col + (1. - beta1) * *g_col)
-            });
-        bias_gradient_mt
-            .iter_mut()
-            .zip(bias_gradients.iter())
-            .for_each(|(mt_row, g_row)| *mt_row = beta1 * *mt_row + (1. - beta1) * *g_row);
-
-        // s[:] = beta2 * s + (1 - beta2) * p.grad.square()
-        gradient_vt
-            .iter_mut()
-            .zip(gradients.iter())
-            .for_each(|(vt_row, g_row)| {
-                vt_row
-                    .iter_mut()
-                    .zip(g_row.iter())
-                    .for_each(|(vt_col, g_col)| {
-                        *vt_col = beta2 * *vt_col + (1. - beta2) * g_col.powf(2.)
-                    })
-            });
-        bias_gradient_vt
-            .iter_mut()
-            .zip(bias_gradients.iter())
-            .for_each(|(vt_row, g_row)| *vt_row = beta2 * *vt_row + (1. - beta2) * g_row.powf(2.));
-
-        // v_bias_corr = v / (1 - beta1 ** hyperparams['t'])
-        let gradient_mtt: Vec<Vec<f64>> = gradient_mt
-            .iter()
-            .map(|row| {
-                row.iter()
-                    .map(|col| col / (1. - (beta1.powf(count))))
-                    .collect()
-            })
-            .collect();
-        let bias_gradient_mtt: Vec<f64> = bias_gradient_mt
-            .iter()
-            .map(|row| row / (1. - (beta1.powf(count + 1.))))
-            .collect();
-
-        // s_bias_corr = s / (1 - beta2 ** hyperparams['t'])
-        let gradient_vtt: Vec<Vec<f64>> = gradient_vt
-            .iter()
-            .map(|row| {
-                row.iter()
-                    .map(|col| col / (1. - (beta1.powf(count))))
-                    .collect()
-            })
-            .collect();
-        let bias_gradient_vtt: Vec<f64> = bias_gradient_vt
-            .iter()
-            .map(|row| row / (1. - (beta1.powf(count + 1.))))
-            .collect();
-
-        // v_bias_corr / (s_bias_corr.sqrt() + eps)
-        let gradients: Vec<Vec<f64>> = gradient_mtt
-            .iter()
-            .zip(gradient_vtt.iter())
-            .map(|(mtt_row, vtt_row)| {
-                mtt_row
-                    .iter()
-                    .zip(vtt_row.iter())
-                    .map(|(mtt_col, vtt_col)| mtt_col / (vtt_col.sqrt() + eps))
-                    .collect()
-            })
-            .collect();
-        let bias_gradients: Vec<f64> = bias_gradient_mtt
-            .iter()
-            .zip(bias_gradient_vtt.iter())
-            .map(|(mtt_row, vtt_row)| mtt_row / (vtt_row.sqrt() + eps))
-            .collect();
-
-        log::debug!(
-            "before weights: {:.3?}, gradient: {:.3?}",
-            &weights,
-            &gradients
+        // step1. mean(t) = beta1 * mean(t-1) + (1 - beta1) * gradient(t)
+        transform(
+            &mut self.means[idx],
+            gradients,
+            &mut self.bias_means[idx],
+            bias_gradients,
+            |mean, gradient| *mean = beta1 * *mean + (1. - beta1) * gradient,
         );
-        weights
-            .iter_mut()
-            .zip(gradients.iter())
-            .for_each(|(ws, gs)| {
-                ws.iter_mut()
-                    .zip(gs.iter())
-                    .for_each(|(w, g)| *w -= self.learning_rate * g)
-            });
-        log::debug!("after weights: {:.3?}", &weights);
-        log::debug!(
-            "before bias: {:.3?}, gradient: {:.3?}",
-            &bias,
-            &bias_gradients
+
+        // step2. viranece(t) = beta2 * virance(t-1) + (1 - beta2) * gradient(t)^2
+        transform(
+            &mut self.virances[idx],
+            gradients,
+            &mut self.bias_virances[idx],
+            bias_gradients,
+            |mean, gradient| *mean = beta2 * *mean + (1. - beta2) * gradient.powf(2.),
         );
-        bias.iter_mut()
-            .zip(bias_gradients.iter())
-            .for_each(|(bias, gradient)| *bias -= self.learning_rate * gradient);
-        log::debug!("after bias: {:.3?}", &bias);
+
+        // step3. mean_bias_corr(t) = mean(t) / (1 - beta1^param(t))
+        let (mut corr_mean, mut bias_corr_mean) =
+            for_each(&self.means[idx], &self.bias_means[idx], |mean| {
+                mean / (1. - beta1.powf(param))
+            });
+
+        // step4. virance_bias_corr(t) = virance(t) / (1 - beta2^param(t))
+        let (corr_virance, bias_corr_virance) =
+            for_each(&self.virances[idx], &self.bias_virances[idx], |virance| {
+                virance / (1. - beta2.powf(param))
+            });
+
+        // step5. gradient(t) = mean_bias_corr(t) / (virance_bias_corr(t).sqrt() + eps)
+        transform(
+            &mut corr_mean,
+            &corr_virance,
+            &mut bias_corr_mean,
+            &bias_corr_virance,
+            |mean, virance| *mean = *mean / (virance.sqrt() + self.eps),
+        );
+
+        // step6. update weights and bias
+        // use corr_mean as gradient, bias_corr_mean as bias_gradient
+        transform(
+            weights,
+            &corr_mean, // &gradients,
+            bias,
+            &bias_corr_mean, // &bias_gradients,
+            |mut_weight_or_bias, gradient| *mut_weight_or_bias -= self.learning_rate * gradient,
+        );
     }
 }

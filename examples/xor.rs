@@ -3,7 +3,8 @@ use pretty_env_logger;
 use ann_rs::activators::Sigmoid;
 // use ann_rs::functions::xavier_init;
 use ann_rs::objectives::BinaryCrossEntropy;
-use ann_rs::optimizers::SGD;
+use ann_rs::optimizers::Adam;
+// use ann_rs::optimizers::SGD;
 use ann_rs::NetworkBuilder;
 // use rand::{thread_rng, Rng};
 
@@ -42,18 +43,18 @@ fn main() {
     // case 3
     let mut nn = NetworkBuilder::new()
         .input(2)
-        .add_layer(300, Box::new(Sigmoid))
-        .add_layer(300, Box::new(Sigmoid))
+        .add_layer(10, Box::new(Sigmoid))
         .output(1)
         .minimize_to(BinaryCrossEntropy::new())
-        .optimize_with(SGD::new(0.1, 1.))
+        // .optimize_with(SGD::new(0.8))
+        .optimize_with(Adam::new(0.01))
         .build();
 
     let inputs = vec![vec![0., 0.], vec![0., 1.], vec![1., 0.], vec![1., 1.]];
     let labels = vec![vec![0.], vec![1.], vec![1.], vec![0.]];
 
     // train 10'000 times
-    nn.fit(inputs.clone(), labels.clone(), 10000, 4);
+    nn.fit(inputs.clone(), labels.clone(), 2000, 4);
     log::info!("all inputs: {:?}", &inputs);
     log::info!("all labels: {:?}", &labels);
     log::info!(

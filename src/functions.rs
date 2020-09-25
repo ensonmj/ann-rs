@@ -32,6 +32,78 @@ pub fn sigmoid(x: f64) -> f64 {
     1. / (1. + (-x).exp())
 }
 
+pub fn transform<F>(
+    mut_matrix: &mut [Vec<f64>],
+    matrix: &[Vec<f64>],
+    mut_vec: &mut [f64],
+    vec: &[f64],
+    f: F,
+) where
+    F: Fn(&mut f64, f64),
+{
+    mut_matrix
+        .iter_mut()
+        .zip(matrix.iter())
+        .for_each(|(mut_row, row)| {
+            mut_row
+                .iter_mut()
+                .zip(row.iter())
+                .for_each(|(mut_col, &col)| f(mut_col, col))
+        });
+    mut_vec
+        .iter_mut()
+        .zip(vec.iter())
+        .for_each(|(mut_row, &row)| f(mut_row, row));
+}
+
+pub fn transform_matrix<F>(mut_matrix: &mut [Vec<f64>], matrix: &[Vec<f64>], f: F)
+where
+    F: Fn(&mut f64, f64),
+{
+    mut_matrix
+        .iter_mut()
+        .zip(matrix.iter())
+        .for_each(|(mut_row, row)| {
+            mut_row
+                .iter_mut()
+                .zip(row.iter())
+                .for_each(|(mut_col, &col)| f(mut_col, col))
+        });
+}
+
+pub fn transform_vec<F>(mut_vec: &mut [f64], vec: &[f64], f: F)
+where
+    F: Fn(&mut f64, f64),
+{
+    mut_vec
+        .iter_mut()
+        .zip(vec.iter())
+        .for_each(|(mut_row, &row)| f(mut_row, row));
+}
+
+pub fn for_each<F>(matrix: &[Vec<f64>], vec: &[f64], f: F) -> (Vec<Vec<f64>>, Vec<f64>)
+where
+    F: Fn(f64) -> f64,
+{
+    (
+        matrix
+            .iter()
+            .map(|row| row.iter().map(|&col| f(col)).collect())
+            .collect(),
+        vec.iter().map(|&row| f(row)).collect(),
+    )
+}
+
+pub fn for_each_matrix<F>(matrix: &[Vec<f64>], f: F) -> Vec<Vec<f64>>
+where
+    F: Fn(f64) -> f64,
+{
+    matrix
+        .iter()
+        .map(|row| row.iter().map(|&col| f(col)).collect())
+        .collect()
+}
+
 // matrix[expected][predicted]
 // precision : p = tp / (tp + fp)
 // recall    : r = tp / (tp + fn)

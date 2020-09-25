@@ -9,7 +9,7 @@ use std::io::{BufReader, Error, Read};
 use ann_rs::activators::Relu;
 use ann_rs::functions::*;
 use ann_rs::objectives::CrossEntropy;
-use ann_rs::optimizers::SGD;
+use ann_rs::optimizers::Adam;
 use ann_rs::NetworkBuilder;
 
 fn print_sample_image(image: &[u8], rows: usize, cols: usize, label: u8) {
@@ -111,7 +111,7 @@ fn main() -> Result<(), Error> {
         .add_layer(300, Box::new(Relu))
         .output(10)
         .minimize_to(CrossEntropy::new())
-        .optimize_with(SGD::new(0.0001, 1.0))
+        .optimize_with(Adam::new(0.001))
         .build();
 
     let image_data: Vec<Vec<f64>> = image_data.chunks(rows * cols).map(|s| s.to_vec()).collect();
@@ -120,7 +120,7 @@ fn main() -> Result<(), Error> {
         .into_iter()
         .map(|v| into_onehot(v as usize, 10))
         .collect();
-    nn.fit(image_data, label_data, 5, 100);
+    nn.fit(image_data, label_data, 20, 2000);
 
     // test
     let test_image_file = "./data/t10k-images-idx3-ubyte";

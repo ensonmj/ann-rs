@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 use textplots::{Chart, Plot, Shape};
 
 use crate::activators::Activator;
+use crate::functions::{transform_matrix, transform_vec};
 use crate::layers::Layer;
 use crate::objectives::Objective;
 use crate::optimizers::Optimizer;
@@ -111,34 +112,29 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
         // Vec1<(Vec2<Vec3<Vec4<f64>>>, Vec2<Vec3<f64>>)>
         // =>
         // Vec1<(Mean<Vec3<Vec4<f64>>>, Mean<Vec3<f64>>)>
-        let mean_gradients: Vec<(Vec<Vec<f64>>, Vec<f64>)> = all_layer_minibatch_gradients
+        let mut mean_gradients: Vec<(Vec<Vec<f64>>, Vec<f64>)> = all_layer_minibatch_gradients
             .iter()
             .map(|(batch_gradients, batch_bias_gradients)| {
                 let num_nodes = batch_gradients[0].len();
                 let input_dim = batch_gradients[0][0].len();
                 let mut mean_gradients: Vec<Vec<f64>> = vec![vec![0.; input_dim]; num_nodes];
-                let mut mean_bias_gradients: Vec<f64> = vec![0.; num_nodes];
                 batch_gradients.iter().for_each(|gradients| {
-                    mean_gradients
-                        .iter_mut()
-                        .zip(gradients)
-                        .for_each(|(sum_row, row)| {
-                            sum_row
-                                .iter_mut()
-                                .zip(row.iter())
-                                .for_each(|(sum_col, col)| *sum_col = *sum_col + col)
-                        })
+                    transform_matrix(&mut mean_gradients, gradients, |sum_g, g| {
+                        *sum_g = *sum_g + g
+                    })
                 });
                 mean_gradients.iter_mut().for_each(|row| {
                     row.iter_mut()
                         .for_each(|col| *col = *col / num_of_minibatch)
                 });
 
+                let mut mean_bias_gradients: Vec<f64> = vec![0.; num_nodes];
                 batch_bias_gradients.iter().for_each(|bias_gradients| {
-                    mean_bias_gradients
-                        .iter_mut()
-                        .zip(bias_gradients)
-                        .for_each(|(sum_row, row)| *sum_row = *sum_row + row)
+                    transform_vec(
+                        &mut mean_bias_gradients,
+                        bias_gradients,
+                        |sum_bias_g, bias_g| *sum_bias_g = *sum_bias_g + bias_g,
+                    )
                 });
                 mean_bias_gradients
                     .iter_mut()
@@ -149,13 +145,15 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
             .collect();
 
         let optimizer = &mut self.optimizer;
-        self.layers.iter_mut().zip(mean_gradients.iter()).for_each(
-            |(ref mut layer, (gradient, bias_gradient))| {
+        self.layers
+            .iter_mut()
+            .zip(mean_gradients.iter_mut())
+            .enumerate()
+            .for_each(|(idx, (ref mut layer, (gradient, bias_gradient)))| {
                 let weights = &mut layer.weights;
                 let bias = &mut layer.bias;
-                optimizer.optimize(weights, bias, gradient, bias_gradient);
-            },
-        );
+                optimizer.optimize(idx, weights, bias, gradient, bias_gradient);
+            });
 
         // step5. evaluation
         // hit_count, miss_count, loss
