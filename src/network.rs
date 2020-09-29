@@ -50,7 +50,6 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
             train_pairs.chunks(batch_size).enumerate().fold(
                 (0, 0, 0.),
                 |(total_hit, total_miss, total_loss), (j, train_pairs)| {
-                    log::debug!("{:?}", &train_pairs);
                     let (hit, miss, loss) = self.fit_one_batch(train_pairs);
 
                     let num_pairs = hit + miss;
@@ -64,8 +63,8 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
                         i,
                         (total_hit + hit) as f64 / total_num as f64,
                         (total_loss + loss) / total_num as f64,
-                        j as u64 * num_pairs,
-                        (j + 1) as u64 * num_pairs - 1,
+                        j * batch_size,
+                        j * batch_size + num_pairs - 1,
                         hit as f64 / num_pairs as f64,
                         batch_mean_loss,
                     );
@@ -89,7 +88,7 @@ impl<A: Activator, Obj: Objective<A>, Opt: Optimizer> Network<A, Obj, Opt> {
     }
 
     // (batch_hit, batch_miss, batch_loss)
-    fn fit_one_batch(&mut self, train_pairs: &[(Vec<f64>, Vec<f64>)]) -> (u64, u64, f64) {
+    fn fit_one_batch(&mut self, train_pairs: &[(Vec<f64>, Vec<f64>)]) -> (usize, usize, f64) {
         let num_of_minibatch = train_pairs.len() as f64;
 
         // step1. split inputs and ecpecteds from train_pairs and collect separately
